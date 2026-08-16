@@ -1,0 +1,210 @@
+services:
+
+  # ==============API Gateway=================
+  api-gateway:
+    extra_hosts:
+      - "keycloak.local:host-gateway"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+      AUTHENTICATION_SERVICE_URL: ${AUTHENTICATION_SERVICE_URL}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+    depends_on:
+      user-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      authentication-service:
+        condition: service_started
+    networks:
+      - default
+
+  # =================User Service=================
+  user-service:
+    extra_hosts:
+      - "keycloak.local:host-gateway"
+    build:
+      context: ../../user-service/user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_DATASOURCE_URL: ${USER_DB_DATASOURCE_URL}
+      DB_USER: ${USER_DB_USER}
+      DB_PASSWORD: ${USER_DB_PASSWORD}
+      DB_NAME: ${USER_DB_NAME}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_USERNAME: ${REDIS_USERNAME}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+    depends_on:
+      user-service-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+
+  # ==============User Service Postgres=================
+  user-service-postgres:
+    image: postgres:17
+    container_name: user-service-postgres
+    environment:
+      POSTGRES_DB: ${USER_DB_NAME}
+      POSTGRES_USER: ${USER_DB_USER}
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - user-service-postgres-data:/var/lib/postgresql/data
+      - ../../user-service/user-service/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - default
+
+  # ================Order Service=================
+  order-service:
+    extra_hosts:
+      - "keycloak.local:host-gateway"
+    build:
+      context: ../../oder-service/order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_DATASOURCE_URL: ${ORDER_DB_DATASOURCE_URL}
+      DB_USER: ${ORDER_DB_USER}
+      DB_PASSWORD: ${ORDER_DB_PASSWORD}
+      DB_NAME: ${ORDER_DB_NAME}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+    depends_on:
+      order-service-postgres:
+        condition: service_healthy
+    networks:
+      - default
+
+  # ==========Order Service Postgres================
+  order-service-postgres:
+    image: postgres:17
+    container_name: order-service-postgres
+    environment:
+      POSTGRES_DB: ${ORDER_DB_NAME}
+      POSTGRES_USER: ${ORDER_DB_USER}
+      POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - order-service-postgres-data:/var/lib/postgresql/data
+      - ../../oder-service/order-service/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - default
+
+  # =================Authentication Service==================
+  authentication-service:
+    extra_hosts:
+      - "keycloak.local:host-gateway"
+    build:
+      context: ../../authentication-service/authentication-service
+      dockerfile: Dockerfile
+    container_name: authentication-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_ADMIN_REALM: ${KEYCLOAK_ADMIN_REALM}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+    depends_on:
+      keycloak:
+        condition: service_started
+      user-service:
+        condition: service_started
+    networks:
+      - default
+
+  # =================Keycloak=================
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    container_name: keycloak
+    command: start-dev
+    ports:
+      - "8081:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      KC_HOSTNAME: keycloak.local
+      KC_HOSTNAME_PORT: 8081
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+    networks:
+      - default
+
+  # =================Redis=================
+  redis:
+    image: redis:7
+    container_name: user-service-redis
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "PING"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - default
+
+volumes:
+  user-service-postgres-data:
+  order-service-postgres-data:
+  redis-data:
+  keycloak-data:
+
+networks:
+  default:
+    name: innowise-network
+    external: true
