@@ -64,9 +64,7 @@ services:
       POSTGRES_PASSWORD: ${USER_DB_PASSWORD}
     healthcheck:
       test:
-        [
-          "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
-        ]
+        ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -109,9 +107,7 @@ services:
       POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD}
     healthcheck:
       test:
-        [
-          "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
-        ]
+        ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -178,9 +174,7 @@ services:
       - redis-data:/data
     healthcheck:
       test:
-        [
-          "CMD", "redis-cli","-a", "${REDIS_PASSWORD}", "PING"
-        ]
+        ["CMD", "redis-cli","-a", "${REDIS_PASSWORD}", "PING"]
       interval: 5s
       timeout: 3s
       retries: 10
